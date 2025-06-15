@@ -37,9 +37,8 @@ def setup_driver():
         raise
 
 # Scrape Yahoo Finance most active tickers with Selenium
-def get_yahoo_high_volume_tickers():
+def get_yahoo_high_volume_tickers(driver):
     try:
-        driver = setup_driver()
         url = "https://finance.yahoo.com/screener/predefined/most_actives?count=20"
         driver.get(url)
         logging.info(f"Navigating to {url}")
@@ -48,7 +47,6 @@ def get_yahoo_high_volume_tickers():
         )
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        driver.quit()
         table = soup.find('table', class_='yf-1570k0a')
         if not table:
             logging.error("Table with class 'yf-1570k0a' not found")
@@ -68,9 +66,8 @@ def get_yahoo_high_volume_tickers():
         return {}
 
 # Scrape Yahoo Finance trending tickers with Selenium
-def get_yahoo_trending_tickers():
+def get_yahoo_trending_tickers(driver):
     try:
-        driver = setup_driver()
         url = "https://finance.yahoo.com/markets/stocks/trending/"
         driver.get(url)
         logging.info(f"Navigating to {url}")
@@ -79,7 +76,6 @@ def get_yahoo_trending_tickers():
         )
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        driver.quit()
         table = soup.find('table', class_='yf-1570k0a')
         if not table:
             logging.error("Table with class 'yf-1570k0a' not found")
@@ -169,99 +165,113 @@ def detect_fomo(stock_data):
 # Main execution
 def main():
     print("🚀 Starting ticker scraping...")
-    most_active_tickers = get_yahoo_high_volume_tickers()
-    trending_tickers = get_yahoo_trending_tickers()
     
-    # Combine tickers from both sources
-    all_tickers = {}
-    all_tickers.update(most_active_tickers)
-    all_tickers.update(trending_tickers)
-    ticker_list = list(all_tickers.keys())
+    # Create a single driver instance
+    driver = setup_driver()
     
-    # Only use fallback if we got no tickers from either source
-    if not ticker_list:
-        logging.warning("No tickers found, using fallback tickers.")
-        ticker_list = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META']
-    
-    print("\n📊 Scraping Results:")
-    print(f"Most Active Tickers: {', '.join(most_active_tickers.keys()) if most_active_tickers else 'None'}")
-    print(f"Trending Tickers: {', '.join(trending_tickers.keys()) if trending_tickers else 'None'}")
-    print(f"\n✅ Total Unique Tickers: {len(ticker_list)}")
-    
-    print("\n🔍 Starting technical analysis...")
-    results = []
-    for i, ticker in enumerate(ticker_list, 1):
-        print(f"Analyzing {i}/{len(ticker_list)}: {ticker}")
-        if result := analyze_ticker(ticker):
-            results.append(result)
-    
-    if results:
-        # Create data directory
-        data_dir = "data"
-        os.makedirs(data_dir, exist_ok=True)
+    try:
+        # Scrape both sites using the same driver
+        most_active_tickers = get_yahoo_high_volume_tickers(driver)
+        trending_tickers = get_yahoo_trending_tickers(driver)
         
-        # Create filename with current date
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_path = os.path.join(data_dir, f"fomo_alerts_{current_date}.txt")
+        # Combine tickers from both sources
+        all_tickers = {}
+        all_tickers.update(most_active_tickers)
+        all_tickers.update(trending_tickers)
+        ticker_list = list(all_tickers.keys())
         
-        # Prepare comprehensive analysis data
-        analysis_data = []
-        alert_data = []
+        # Only use fallback if we got no tickers from either source
+        if not ticker_list:
+            logging.warning("No tickers found, using fallback tickers.")
+            ticker_list = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META']
         
-        for r in results:
-            # Add to analysis data for full metrics
-            analysis_data.append({
-                'Ticker': r['Ticker'],
-                '2D_Price_Change_%': r['2D_Price_Change_%'],
-                '1D_Price_Change_%': r['1D_Price_Change_%'],
-                '2D_vs_10D_Vol_Ratio': r['2D_vs_10D_Vol_Ratio'],
-                '2D_vs_20D_Vol_Ratio': r['2D_vs_20D_Vol_Ratio'],
-                'Vol_Spike': r['Vol_Spike'],
-                'RSI': r['RSI'],
-                'Consecutive_Up_Days': r['Consecutive_Up_Days'],
-                'ATR': r['ATR']
-            })
+        print("\n📊 Scraping Results:")
+        print(f"Most Active Tickers: {', '.join(most_active_tickers.keys()) if most_active_tickers else 'None'}")
+        print(f"Trending Tickers: {', '.join(trending_tickers.keys()) if trending_tickers else 'None'}")
+        print(f"\n✅ Total Unique Tickers: {len(ticker_list)}")
+        
+        print("\n🔍 Starting technical analysis...")
+        results = []
+        for i, ticker in enumerate(ticker_list, 1):
+            print(f"Analyzing {i}/{len(ticker_list)}: {ticker}")
+            if result := analyze_ticker(ticker):
+                results.append(result)
+        
+        if results:
+            # Create data directory
+            data_dir = "data"
+            os.makedirs(data_dir, exist_ok=True)
             
-            # Check for FOMO signals
-            if triggers := detect_fomo(r):
-                alert_data.append({
-                    'ticker': r['Ticker'],
-                    'triggers': triggers
+            # Create filename with current date
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            output_path = os.path.join(data_dir, f"fomo_alerts_{current_date}.txt")
+            
+            # Prepare comprehensive analysis data
+            analysis_data = []
+            alert_data = []
+            
+            for r in results:
+                # Add to analysis data for full metrics
+                analysis_data.append({
+                    'Ticker': r['Ticker'],
+                    '2D_Price_Change_%': r['2D_Price_Change_%'],
+                    '1D_Price_Change_%': r['1D_Price_Change_%'],
+                    '2D_vs_10D_Vol_Ratio': r['2D_vs_10D_Vol_Ratio'],
+                    '2D_vs_20D_Vol_Ratio': r['2D_vs_20D_Vol_Ratio'],
+                    'Vol_Spike': r['Vol_Spike'],
+                    'RSI': r['RSI'],
+                    'Consecutive_Up_Days': r['Consecutive_Up_Days'],
+                    'ATR': r['ATR']
                 })
-        
-        # Save to file with trigger explanations and alerts
-        with open(output_path, 'w') as f:
-            # Write trigger explanations
-            f.write("FOMO TRIGGER EXPLANATIONS:\n")
-            f.write("🚀 2D Price Surge (>10% gain)\n")
-            f.write("📈 Overbought (RSI >70)\n")
-            f.write("📊 Volume Spike (2-day vol >1.5x 10-day avg)\n")
-            f.write("💨 Strong Momentum (>5% daily gain)\n")
-            f.write("🔊 Heavy Trading Volume (today >2x 20-day avg)\n\n")
+                
+                # Check for FOMO signals
+                if triggers := detect_fomo(r):
+                    alert_data.append({
+                        'ticker': r['Ticker'],
+                        'triggers': triggers
+                    })
+            
+            # Save to file with trigger explanations and alerts
+            with open(output_path, 'w') as f:
+                # Write trigger explanations
+                f.write("FOMO TRIGGER EXPLANATIONS:\n")
+                f.write("🚀 2D Price Surge (>10% gain)\n")
+                f.write("📈 Overbought (RSI >70)\n")
+                f.write("📊 Volume Spike (2-day vol >1.5x 10-day avg)\n")
+                f.write("💨 Strong Momentum (>5% daily gain)\n")
+                f.write("🔊 Heavy Trading Volume (today >2x 20-day avg)\n\n")
+                
+                if alert_data:
+                    f.write("FOMO ALERTS:\n")
+                    for alert in alert_data:
+                        alert_line = f"🔥 {alert['ticker']} ALERT: {' | '.join(alert['triggers'])}"
+                        f.write(alert_line + "\n")
+                    f.write(f"\nTotal FOMO alerts: {len(alert_data)}")
+                else:
+                    f.write("No FOMO alerts detected today")
+            
+            # Print results to console
+            print("\n📈 COMPREHENSIVE ANALYSIS RESULTS:")
+            analysis_df = pd.DataFrame(analysis_data)
+            print(analysis_df.to_string(index=False))
             
             if alert_data:
-                f.write("FOMO ALERTS:\n")
+                print("\n🔥 FOMO ALERTS DETECTED:")
                 for alert in alert_data:
-                    alert_line = f"🔥 {alert['ticker']} ALERT: {' | '.join(alert['triggers'])}"
-                    f.write(alert_line + "\n")
-                f.write(f"\nTotal FOMO alerts: {len(alert_data)}")
+                    print(f"🔥 {alert['ticker']} ALERT: {' | '.join(alert['triggers'])}")
+                print(f"\n💾 Saved {len(alert_data)} FOMO alerts to {output_path}")
             else:
-                f.write("No FOMO alerts detected today")
-        
-        # Print results to console
-        print("\n📈 COMPREHENSIVE ANALYSIS RESULTS:")
-        analysis_df = pd.DataFrame(analysis_data)
-        print(analysis_df.to_string(index=False))
-        
-        if alert_data:
-            print("\n🔥 FOMO ALERTS DETECTED:")
-            for alert in alert_data:
-                print(f"🔥 {alert['ticker']} ALERT: {' | '.join(alert['triggers'])}")
-            print(f"\n💾 Saved {len(alert_data)} FOMO alerts to {output_path}")
+                print("\n😢 No stocks with FOMO signals found")
         else:
-            print("\n😢 No stocks with FOMO signals found")
-    else:
-        print("\n❌ No valid analysis results")
+            print("\n❌ No valid analysis results")
+    
+    except Exception as e:
+        logging.error(f"Main execution error: {e}")
+    
+    finally:
+        # Ensure the driver is closed even if errors occur
+        driver.quit()
+        logging.info("WebDriver closed")
 
 if __name__ == "__main__":
     main()
