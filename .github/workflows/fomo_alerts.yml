@@ -4,15 +4,19 @@ on:
   schedule:
     # Runs daily at 9:00 AM EST (14:00 UTC)
     - cron: '0 14 * * *'
-  workflow_dispatch:  # Enables manual trigger from GitHub Actions UI
+  workflow_dispatch:  # Enable manual runs
 
 jobs:
   generate-fomo-alerts:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write  # Add write permission
+      
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        persist-credentials: true  # Required for push access
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -27,12 +31,12 @@ jobs:
     - name: Install Chrome
       run: |
         sudo apt-get update
-        sudo apt-get install -y chromium-browser
+        sudo apt-get install -y chromium-browser chromium-chromedriver
 
     - name: Run FOMO analysis
       run: python main.py
 
-    - name: Commit results
+    - name: Commit and push results
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
