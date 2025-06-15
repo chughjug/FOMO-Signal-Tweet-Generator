@@ -29,6 +29,11 @@ def setup_driver():
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # Set Chrome binary location for GitHub Actions
+        chrome_binary = os.getenv('CHROME_BINARY_PATH', '/usr/lib/chromium-browser/chromium-browser')
+        chrome_options.binary_location = chrome_binary
+        
         driver = webdriver.Chrome(options=chrome_options)
         logging.info("Headless Selenium WebDriver initialized successfully")
         return driver
