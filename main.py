@@ -47,13 +47,13 @@ def setup_driver():
         logging.error(f"Failed to initialize Selenium WebDriver: {e}")
         raise
 
-# Scrape Yahoo Finance most active tickers with Selenium
+# Scrape Yahoo Finance most active tickers with Selenium (original working version)
 def get_yahoo_high_volume_tickers(driver):
     try:
         url = "https://finance.yahoo.com/screener/predefined/most_actives?count=20"
         driver.get(url)
         logging.info(f"Navigating to {url}")
-        WebDriverWait(driver, 30).until(
+        WebDriverWait(driver, 60).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'table.yf-1570k0a'))
         )
         time.sleep(3)
@@ -76,13 +76,13 @@ def get_yahoo_high_volume_tickers(driver):
         logging.error(f"Yahoo Finance most active error: {e}")
         return {}
 
-# Scrape Yahoo Finance trending tickers with Selenium
+# Scrape Yahoo Finance trending tickers with Selenium (EXACT DUPLICATE of the most active function)
 def get_yahoo_trending_tickers(driver):
     try:
         url = "https://finance.yahoo.com/markets/stocks/trending/"
         driver.get(url)
         logging.info(f"Navigating to {url}")
-        WebDriverWait(driver, 30).until(
+        WebDriverWait(driver, 60).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'table.yf-1570k0a'))
         )
         time.sleep(3)
@@ -105,7 +105,7 @@ def get_yahoo_trending_tickers(driver):
         logging.error(f"Yahoo Finance trending error: {e}")
         return {}
 
-# Analyze ticker with comprehensive metrics - ORIGINAL VERSION
+# Analyze ticker with comprehensive metrics
 def analyze_ticker(ticker):
     try:
         end_date = datetime.now()
@@ -121,7 +121,6 @@ def analyze_ticker(ticker):
             logging.error(f"Unexpected columns for {ticker}: {data.columns}")
             return None
         logging.info(f"Data for {ticker}: shape {data.shape}, columns {data.columns}, dates {data.index[0]} to {data.index[-1]}")
-        ohlcv = data[['Open', 'High', 'Low', 'Close', 'Volume']].tail(3)
         price_change_2d = ((data['Close'].iloc[-1] - data['Close'].iloc[-3]) / data['Close'].iloc[-3]) * 100 if len(data) >= 3 else np.nan
         price_change_1d = ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100 if len(data) >= 2 else np.nan
         vol_2d_avg = data['Volume'].tail(2).mean() if len(data) >= 2 else np.nan
@@ -138,7 +137,6 @@ def analyze_ticker(ticker):
         atr = tr.rolling(window=14).mean().iloc[-1] if len(tr) >= 14 else np.nan
         return {
             'Ticker': ticker,
-            'OHLCV': ohlcv,
             '2D_Price_Change_%': round(price_change_2d, 2) if not np.isnan(price_change_2d) else None,
             '1D_Price_Change_%': round(price_change_1d, 2) if not np.isnan(price_change_1d) else None,
             '2D_vs_10D_Vol_Ratio': round(vol_ratio_2d_10d, 2) if not np.isnan(vol_ratio_2d_10d) else None,
@@ -152,7 +150,7 @@ def analyze_ticker(ticker):
         logging.error(f"Error processing {ticker}: {e}")
         return None
 
-# FOMO detection with specific triggers - ORIGINAL VERSION
+# FOMO detection with specific triggers
 def detect_fomo(stock_data):
     triggers = []
     
@@ -187,13 +185,14 @@ def main():
     
     try:
         # Scrape both sites using the same driver
+        print("\n🔍 Scraping most active tickers...")
         most_active_tickers = get_yahoo_high_volume_tickers(driver)
+        
+        print("\n🔍 Scraping trending tickers...")
         trending_tickers = get_yahoo_trending_tickers(driver)
         
         # Combine tickers from both sources
-        all_tickers = {}
-        all_tickers.update(most_active_tickers)
-        all_tickers.update(trending_tickers)
+        all_tickers = {**most_active_tickers, **trending_tickers}
         ticker_list = list(all_tickers.keys())
         
         # Only use fallback if we got no tickers from either source
@@ -204,7 +203,7 @@ def main():
         print("\n📊 Scraping Results:")
         print(f"Most Active Tickers: {', '.join(most_active_tickers.keys()) if most_active_tickers else 'None'}")
         print(f"Trending Tickers: {', '.join(trending_tickers.keys()) if trending_tickers else 'None'}")
-        print(f"\n✅ Total Unique Tickers: {len(ticker_list)}")
+        print(f"✅ Total Unique Tickers: {len(ticker_list)}")
         
         print("\n🔍 Starting technical analysis...")
         results = []
@@ -218,24 +217,9 @@ def main():
         output_path = os.path.join(data_dir, f"fomo_alerts_{current_date}.txt")
         
         if results:
-            # Prepare comprehensive analysis data
-            analysis_data = []
             alert_data = []
             
             for r in results:
-                # Add to analysis data for full metrics
-                analysis_data.append({
-                    'Ticker': r['Ticker'],
-                    '2D_Price_Change_%': r['2D_Price_Change_%'],
-                    '1D_Price_Change_%': r['1D_Price_Change_%'],
-                    '2D_vs_10D_Vol_Ratio': r['2D_vs_10D_Vol_Ratio'],
-                    '2D_vs_20D_Vol_Ratio': r['2D_vs_20D_Vol_Ratio'],
-                    'Vol_Spike': r['Vol_Spike'],
-                    'RSI': r['RSI'],
-                    'Consecutive_Up_Days': r['Consecutive_Up_Days'],
-                    'ATR': r['ATR']
-                })
-                
                 # Check for FOMO signals
                 if triggers := detect_fomo(r):
                     alert_data.append({
@@ -263,10 +247,6 @@ def main():
                     f.write("No FOMO alerts detected today")
             
             # Print results to console
-            print("\n📈 COMPREHENSIVE ANALYSIS RESULTS:")
-            analysis_df = pd.DataFrame(analysis_data)
-            print(analysis_df.to_string(index=False))
-            
             if alert_data:
                 print("\n🔥 FOMO ALERTS DETECTED:")
                 for alert in alert_data:
