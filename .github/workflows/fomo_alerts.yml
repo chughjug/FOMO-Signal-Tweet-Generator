@@ -28,13 +28,17 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Install Chrome
+    - name: Install Chrome and Chromedriver
       run: |
         sudo apt-get update
         sudo apt-get install -y chromium-browser chromium-chromedriver
+        # Ensure chromedriver is in PATH
+        sudo ln -s /usr/lib/chromium-browser/chromedriver /usr/bin/chromedriver
 
     - name: Run FOMO analysis
       run: python main.py
+      env:
+        CHROME_BINARY_PATH: /usr/lib/chromium-browser/chromium-browser
 
     - name: Commit and push results
       run: |
