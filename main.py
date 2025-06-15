@@ -106,21 +106,47 @@ def get_yahoo_trending_tickers(driver):
         return {}
 
 # Analyze ticker with comprehensive metrics
+# Analyze ticker with comprehensive metrics - UPDATED VERSION
 def analyze_ticker(ticker):
     try:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
-        data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
+        
+        # Add retry mechanism with delays
+        max_retries = 3
+        retry_delay = 2  # seconds
+        data = None
+        
+        for attempt in range(max_retries):
+            try:
+                data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
+                break
+            except Exception as e:
+                logging.warning(f"Attempt {attempt+1} failed for {ticker}: {e}")
+                time.sleep(retry_delay)
+        
+        if data is None:
+            logging.error(f"Failed to get data for {ticker} after {max_retries} attempts")
+            return None
+            
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.droplevel(1)
+            
         if data.empty or len(data) < 10:
             logging.warning(f"Insufficient data for {ticker}: {data.shape}, dates {data.index[0] if not data.empty else None} to {data.index[-1] if not data.empty else None}")
             return None
+            
         expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
         if not all(col in data.columns for col in expected_columns):
             logging.error(f"Unexpected columns for {ticker}: {data.columns}")
             return None
+            
         logging.info(f"Data for {ticker}: shape {data.shape}, columns {data.columns}, dates {data.index[0]} to {data.index[-1]}")
+        
+        # Add a small delay between tickers to avoid rate limiting
+        time.sleep(0.5)
+        
+        ohlcv = data[['Open', 'High', 'Low', 'Close', 'Volume']].tail(3)
         price_change_2d = ((data['Close'].iloc[-1] - data['Close'].iloc[-3]) / data['Close'].iloc[-3]) * 100 if len(data) >= 3 else np.nan
         price_change_1d = ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100 if len(data) >= 2 else np.nan
         vol_2d_avg = data['Volume'].tail(2).mean() if len(data) >= 2 else np.nan
@@ -135,8 +161,10 @@ def analyze_ticker(ticker):
                         np.maximum(abs(data['High'] - data['Close'].shift(1)), 
                                    abs(data['Low'] - data['Close'].shift(1))))
         atr = tr.rolling(window=14).mean().iloc[-1] if len(tr) >= 14 else np.nan
+        
         return {
             'Ticker': ticker,
+            'OHLCV': ohlcv,
             '2D_Price_Change_%': round(price_change_2d, 2) if not np.isnan(price_change_2d) else None,
             '1D_Price_Change_%': round(price_change_1d, 2) if not np.isnan(price_change_1d) else None,
             '2D_vs_10D_Vol_Ratio': round(vol_ratio_2d_10d, 2) if not np.isnan(vol_ratio_2d_10d) else None,
