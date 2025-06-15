@@ -14,9 +14,61 @@ import time
 import numpy as np
 import os
 import shutil
+import random
+import requests
+from fake_useragent import UserAgent
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Create requests session with rotation
+def create_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': UserAgent().random,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0'
+    })
+    return session
+
+# Set up custom yfinance downloader
+def safe_yf_download(ticker, session, start_date, end_date):
+    max_retries = 5
+    base_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # Rotate user agent
+            session.headers.update({'User-Agent': UserAgent().random})
+            
+            # Add random delay
+            time.sleep(random.uniform(0.5, 1.5))
+            
+            # Download data
+            data = yf.download(
+                ticker, 
+                start=start_date, 
+                end=end_date, 
+                progress=False, 
+                auto_adjust=False,
+                threads=False
+            )
+            
+            if data.empty:
+                raise ValueError(f"No data returned for {ticker}")
+                
+            return data
+            
+        except Exception as e:
+            logging.warning(f"Attempt {attempt+1} failed for {ticker}: {e}")
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+            time.sleep(delay)
+    
+    logging.error(f"Failed to download data for {ticker} after {max_retries} attempts")
+    return None
 
 # Selenium WebDriver setup with headless mode
 def setup_driver():
@@ -27,9 +79,10 @@ def setup_driver():
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36')
+        chrome_options.add_argument(f'user-agent={UserAgent().random}')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         
         # Use Chromium in GitHub Actions environment
         if os.getenv('GITHUB_ACTIONS') == 'true':
@@ -47,86 +100,87 @@ def setup_driver():
         logging.error(f"Failed to initialize Selenium WebDriver: {e}")
         raise
 
-# Scrape Yahoo Finance most active tickers with Selenium (original working version)
+# Scrape Yahoo Finance most active tickers with Selenium
 def get_yahoo_high_volume_tickers(driver):
     try:
         url = "https://finance.yahoo.com/screener/predefined/most_actives?count=20"
         driver.get(url)
         logging.info(f"Navigating to {url}")
+        
+        # Random delay to avoid detection
+        time.sleep(random.uniform(3, 6))
+        
         WebDriverWait(driver, 60).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'table.yf-1570k0a'))
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'table[data-test="scr-res-table"]'))
         )
-        time.sleep(3)
+        
+        time.sleep(2)  # Additional buffer
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        table = soup.find('table', class_='yf-1570k0a')
+        table = soup.find('table', {'data-test': 'scr-res-table'})
         if not table:
-            logging.error("Table with class 'yf-1570k0a' not found")
+            logging.error("Most active table not found")
             return {}
+            
         tickers = {}
-        rows = table.find('tbody').find_all('tr', class_='row yf-1570k0a')
-        for row in rows:
-            ticker_span = row.find('span', class_='symbol yf-1jsynna')
-            if ticker_span:
-                ticker = ticker_span.text.strip()
+        for row in table.find('tbody').find_all('tr'):
+            ticker_link = row.find('a', {'data-test': 'quoteLink'})
+            if ticker_link:
+                ticker = ticker_link.text.strip()
                 if re.match(r'^[A-Z]{1,5}$', ticker):
                     tickers[ticker] = "Most Active"
+                    
         logging.info(f"Extracted {len(tickers)} Yahoo Finance most active tickers: {list(tickers.keys())}")
         return tickers
+        
     except Exception as e:
         logging.error(f"Yahoo Finance most active error: {e}")
         return {}
 
-# Scrape Yahoo Finance trending tickers with Selenium (EXACT DUPLICATE of the most active function)
+# Scrape Yahoo Finance trending tickers with Selenium
 def get_yahoo_trending_tickers(driver):
     try:
         url = "https://finance.yahoo.com/markets/stocks/trending/"
         driver.get(url)
         logging.info(f"Navigating to {url}")
+        
+        # Random delay to avoid detection
+        time.sleep(random.uniform(3, 6))
+        
         WebDriverWait(driver, 60).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'table.yf-1570k0a'))
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'table[data-test="trending-table"]'))
         )
-        time.sleep(3)
+        
+        time.sleep(2)  # Additional buffer
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        table = soup.find('table', class_='yf-1570k0a')
+        table = soup.find('table', {'data-test': 'trending-table'})
         if not table:
-            logging.error("Table with class 'yf-1570k0a' not found")
+            logging.error("Trending table not found")
             return {}
+            
         tickers = {}
-        rows = table.find('tbody').find_all('tr', class_='row yf-1570k0a')
-        for row in rows:
-            ticker_span = row.find('span', class_='symbol yf-1jsynna')
-            if ticker_span:
-                ticker = ticker_span.text.strip()
+        for row in table.find('tbody').find_all('tr'):
+            ticker_link = row.find('a', {'data-test': 'quoteLink'})
+            if ticker_link:
+                ticker = ticker_link.text.strip()
                 if re.match(r'^[A-Z]{1,5}$', ticker):
                     tickers[ticker] = "Trending"
+                    
         logging.info(f"Extracted {len(tickers)} Yahoo Finance trending tickers: {list(tickers.keys())}")
         return tickers
+        
     except Exception as e:
         logging.error(f"Yahoo Finance trending error: {e}")
         return {}
 
 # Analyze ticker with comprehensive metrics
-# Analyze ticker with comprehensive metrics - UPDATED VERSION
-def analyze_ticker(ticker):
+def analyze_ticker(ticker, session):
     try:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         
-        # Add retry mechanism with delays
-        max_retries = 3
-        retry_delay = 2  # seconds
-        data = None
-        
-        for attempt in range(max_retries):
-            try:
-                data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
-                break
-            except Exception as e:
-                logging.warning(f"Attempt {attempt+1} failed for {ticker}: {e}")
-                time.sleep(retry_delay)
-        
+        # Use safe download method
+        data = safe_yf_download(ticker, session, start_date, end_date)
         if data is None:
-            logging.error(f"Failed to get data for {ticker} after {max_retries} attempts")
             return None
             
         if isinstance(data.columns, pd.MultiIndex):
@@ -143,20 +197,22 @@ def analyze_ticker(ticker):
             
         logging.info(f"Data for {ticker}: shape {data.shape}, columns {data.columns}, dates {data.index[0]} to {data.index[-1]}")
         
-        # Add a small delay between tickers to avoid rate limiting
-        time.sleep(0.5)
-        
-        ohlcv = data[['Open', 'High', 'Low', 'Close', 'Volume']].tail(3)
+        # Calculate metrics
         price_change_2d = ((data['Close'].iloc[-1] - data['Close'].iloc[-3]) / data['Close'].iloc[-3]) * 100 if len(data) >= 3 else np.nan
         price_change_1d = ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100 if len(data) >= 2 else np.nan
+        
         vol_2d_avg = data['Volume'].tail(2).mean() if len(data) >= 2 else np.nan
         vol_10d_avg = data['Volume'].tail(10).mean() if len(data) >= 10 else np.nan
         vol_20d_avg = data['Volume'].iloc[-21:-1].mean() if len(data) >= 21 else np.nan
+        
         vol_ratio_2d_10d = vol_2d_avg / vol_10d_avg if vol_10d_avg > 0 else np.nan
         vol_ratio_2d_20d = vol_2d_avg / vol_20d_avg if vol_20d_avg > 0 else np.nan
         vol_spike = data['Volume'].iloc[-1] > 2 * vol_20d_avg if vol_20d_avg > 0 else False
-        rsi = RSIIndicator(close=data['Close'], window=14).rsi().iloc[-1] if len(data) >= 15 and data['Close'].notna().sum() >= 15 else np.nan
-        up_days = (data['Close'].diff() > 0).rolling(window=len(data)).sum().iloc[-1] if len(data) > 1 else 0
+        
+        rsi = RSIIndicator(close=data['Close'], window=14).rsi().iloc[-1] if len(data) >= 15 else np.nan
+        
+        up_days = (data['Close'].diff() > 0).sum() if len(data) > 1 else 0
+        
         tr = np.maximum(data['High'] - data['Low'], 
                         np.maximum(abs(data['High'] - data['Close'].shift(1)), 
                                    abs(data['Low'] - data['Close'].shift(1))))
@@ -164,16 +220,16 @@ def analyze_ticker(ticker):
         
         return {
             'Ticker': ticker,
-            'OHLCV': ohlcv,
             '2D_Price_Change_%': round(price_change_2d, 2) if not np.isnan(price_change_2d) else None,
             '1D_Price_Change_%': round(price_change_1d, 2) if not np.isnan(price_change_1d) else None,
             '2D_vs_10D_Vol_Ratio': round(vol_ratio_2d_10d, 2) if not np.isnan(vol_ratio_2d_10d) else None,
             '2D_vs_20D_Vol_Ratio': round(vol_ratio_2d_20d, 2) if not np.isnan(vol_ratio_2d_20d) else None,
             'Vol_Spike': vol_spike,
             'RSI': round(rsi, 2) if not np.isnan(rsi) else None,
-            'Consecutive_Up_Days': int(up_days) if not np.isnan(up_days) else 0,
+            'Consecutive_Up_Days': int(up_days),
             'ATR': round(atr, 2) if not np.isnan(atr) else None
         }
+        
     except Exception as e:
         logging.error(f"Error processing {ticker}: {e}")
         return None
@@ -208,6 +264,9 @@ def main():
     os.makedirs(data_dir, exist_ok=True)
     logging.info(f"Created data directory at: {os.path.abspath(data_dir)}")
     
+    # Create requests session for yfinance
+    session = create_session()
+    
     # Create a single driver instance
     driver = setup_driver()
     
@@ -237,7 +296,7 @@ def main():
         results = []
         for i, ticker in enumerate(ticker_list, 1):
             print(f"Analyzing {i}/{len(ticker_list)}: {ticker}")
-            if result := analyze_ticker(ticker):
+            if result := analyze_ticker(ticker, session):
                 results.append(result)
         
         # Create filename with current date
