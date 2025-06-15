@@ -6,13 +6,16 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 import re
 import time
 import numpy as np
 import os
+import shutil
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -30,11 +33,18 @@ def setup_driver():
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # Set Chrome binary location for GitHub Actions
-        chrome_binary = os.getenv('CHROME_BINARY_PATH', '/usr/lib/chromium-browser/chromium-browser')
-        chrome_options.binary_location = chrome_binary
+        # Detect CI environment (GitHub Actions)
+        if os.getenv('GITHUB_ACTIONS') == 'true':
+            # GitHub Actions specific setup
+            chrome_path = shutil.which("chromium-browser") or shutil.which("google-chrome")
+            if chrome_path:
+                chrome_options.binary_location = chrome_path
+                logging.info(f"Using Chrome binary at: {chrome_path}")
         
-        driver = webdriver.Chrome(options=chrome_options)
+        # Use ChromeDriverManager to handle driver installation
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         logging.info("Headless Selenium WebDriver initialized successfully")
         return driver
     except Exception as e:
