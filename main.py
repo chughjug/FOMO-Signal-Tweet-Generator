@@ -105,7 +105,7 @@ def get_yahoo_trending_tickers(driver):
         logging.error(f"Yahoo Finance trending error: {e}")
         return {}
 
-# Analyze ticker with comprehensive metrics
+# Analyze ticker with comprehensive metrics - ORIGINAL VERSION
 def analyze_ticker(ticker):
     try:
         end_date = datetime.now()
@@ -152,7 +152,7 @@ def analyze_ticker(ticker):
         logging.error(f"Error processing {ticker}: {e}")
         return None
 
-# FOMO detection with specific triggers
+# FOMO detection with specific triggers - ORIGINAL VERSION
 def detect_fomo(stock_data):
     triggers = []
     
@@ -177,7 +177,7 @@ def detect_fomo(stock_data):
 def main():
     print("🚀 Starting ticker scraping...")
     
-    # Create data directory at the beginning
+    # Create data directory at the beginning to ensure it exists
     data_dir = "data"
     os.makedirs(data_dir, exist_ok=True)
     logging.info(f"Created data directory at: {os.path.abspath(data_dir)}")
