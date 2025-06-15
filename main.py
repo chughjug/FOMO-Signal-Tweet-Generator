@@ -177,6 +177,11 @@ def detect_fomo(stock_data):
 def main():
     print("🚀 Starting ticker scraping...")
     
+    # Create data directory at the beginning
+    data_dir = "data"
+    os.makedirs(data_dir, exist_ok=True)
+    logging.info(f"Created data directory at: {os.path.abspath(data_dir)}")
+    
     # Create a single driver instance
     driver = setup_driver()
     
@@ -208,15 +213,11 @@ def main():
             if result := analyze_ticker(ticker):
                 results.append(result)
         
+        # Create filename with current date
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        output_path = os.path.join(data_dir, f"fomo_alerts_{current_date}.txt")
+        
         if results:
-            # Create data directory
-            data_dir = "data"
-            os.makedirs(data_dir, exist_ok=True)
-            
-            # Create filename with current date
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            output_path = os.path.join(data_dir, f"fomo_alerts_{current_date}.txt")
-            
             # Prepare comprehensive analysis data
             analysis_data = []
             alert_data = []
@@ -274,6 +275,9 @@ def main():
             else:
                 print("\n😢 No stocks with FOMO signals found")
         else:
+            # Create empty file if no results
+            with open(output_path, 'w') as f:
+                f.write("No valid analysis results for today\n")
             print("\n❌ No valid analysis results")
     
     except Exception as e:
