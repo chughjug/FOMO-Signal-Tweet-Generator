@@ -1,0 +1,6 @@
+pandas
+yfinance
+ta
+selenium
+beautifulsoup4
+webdriver-manager
