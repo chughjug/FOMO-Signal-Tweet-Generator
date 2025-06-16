@@ -3,7 +3,6 @@ name: Daily FOMO Alerts
 on:
   schedule:
     # Runs daily at 9:00 AM EST (14:00 UTC)
-    - cron: '0 14 * * *'
   workflow_dispatch:  # Enable manual runs
 
 jobs:
